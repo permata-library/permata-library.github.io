@@ -900,12 +900,14 @@ document.getElementById('masters').innerHTML=MEM.filter(m=>m.r==='master').map(m
 document.getElementById('biros').innerHTML=BIRO.map(([b,c,d])=>{const ms=MEM.filter(m=>m.b===b);return `<div class="biro"><span class="node" style="background:${c}"></span><h3>${b}</h3><p>${d}</p><ul>${ms.map(m=>`<li>${esc(short(m.n))}${m.t?'<em>KETUA</em>':''}</li>`).join('')}</ul></div>`}).join('');
 const STATS=PUBLIC?[[books.length,'titles on the shelves'],[totalCopies,'copies, each with a call number'],[MEM.length,'student librarians'],[12,'collections to explore']]:[[books.length,'titles on the shelves'],[totalCopies,'copies, each with a call number'],[SD.sessions.length,'counter shifts since August'],[totalHours,'hours of duty clocked']];
 document.getElementById('stats').innerHTML=STATS.map(([n,l])=>`<div class="stat"><b data-n="${n}">${fmt(n)}</b><span>${l}</span></div>`).join('');
-let abTL=[];
+let abCtx=null;
 function aboutMotion(on){
-  abTL.forEach(t=>t.kill());abTL=[];
+  // revert() removes every pin wrapper and inline style GSAP added, so the page is clean when we come back
+  if(abCtx){abCtx.revert();abCtx=null}
   const g=window.gsap,ST=window.ScrollTrigger;
   if(!on||!g||!ST||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
   g.registerPlugin(ST);
+  requestAnimationFrame(()=>{abCtx=g.context(()=>{
   const intro=document.getElementById('abIntro'),lines=[...document.querySelectorAll('#abLines p')];
   const lns=intro.querySelectorAll('.ln'),nds=intro.querySelectorAll('.nd'),lbl=intro.querySelectorAll('.lbl');
   g.set(lns,{strokeDasharray:1,strokeDashoffset:1,opacity:0});g.set(nds,{attr:{r:0}});g.set(lbl,{opacity:0});
@@ -916,11 +918,11 @@ function aboutMotion(on){
     .to([lns[2],lns[3]],{strokeDashoffset:0,opacity:1,duration:.5}).to([nds[1],nds[2],nds[3]],{attr:{r:12},stagger:.1,duration:.3}).to([lbl[1],lbl[2]],{opacity:1,duration:.2})
     .to(lines[1],{opacity:0,y:-24,duration:.4}).to(lines[2],{opacity:1,y:0,duration:.4},'<')
     .to([lns[4],lns[5],lns[6],lns[7],lns[8],lns[9]],{strokeDashoffset:0,opacity:1,stagger:.06,duration:.5}).to([nds[4],nds[5],nds[6]],{attr:{r:12},stagger:.1,duration:.3}).to(lbl[3],{opacity:1,duration:.2});
-  abTL.push(tl);
-  document.querySelectorAll('.mrow').forEach((r,i)=>abTL.push(g.fromTo(r.querySelector('b'),{x:i%2?32:-32},{x:0,ease:'none',scrollTrigger:{trigger:r,start:'top bottom',end:'top 55%',scrub:.5}})));
-  document.querySelectorAll('.biro').forEach((b,i)=>abTL.push(g.from(b.querySelectorAll('.node,h3,p,li'),{y:22,opacity:.15,stagger:.05,duration:.6,ease:'power2.out',scrollTrigger:{trigger:b,start:'top 82%'}})));
-  document.querySelectorAll('.stat b').forEach(b=>{const n=+b.dataset.n,o={v:0};abTL.push(g.to(o,{v:n,duration:1.4,ease:'power2.out',onUpdate:()=>b.textContent=fmt(Math.round(o.v)),scrollTrigger:{trigger:b,start:'top 88%'}}))});
-  ST.refresh();
+  (tl);
+  document.querySelectorAll('.mrow').forEach((r,i)=>(g.fromTo(r.querySelector('b'),{x:i%2?32:-32},{x:0,ease:'none',scrollTrigger:{trigger:r,start:'top bottom',end:'top 55%',scrub:.5}})));
+  document.querySelectorAll('.biro').forEach((b,i)=>(g.from(b.querySelectorAll('.node,h3,p,li'),{y:22,opacity:.15,stagger:.05,duration:.6,ease:'power2.out',scrollTrigger:{trigger:b,start:'top 82%'}})));
+  document.querySelectorAll('.stat b').forEach(b=>{const n=+b.dataset.n,o={v:0};(g.to(o,{v:n,duration:1.4,ease:'power2.out',onUpdate:()=>b.textContent=fmt(Math.round(o.v)),scrollTrigger:{trigger:b,start:'top 88%'}}))});
+  });ST.refresh()});
 }
 
 /* ---------- routing ---------- */
