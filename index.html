@@ -782,6 +782,11 @@ dialog.signin::backdrop{background:rgba(20,20,20,.45)}
     <button class="xbtn" id="dlgX">Close</button>
     <h2 id="dlgT">Sign in</h2>
     <div class="segs" role="tablist" style="grid-template-columns:1fr 1fr 1fr"><button role="tab" id="segStu" aria-selected="true">Student</button><button role="tab" id="segStf" aria-selected="false">LC member</button><button role="tab" id="segTch" aria-selected="false">Teacher</button></div>
+    <div id="pLive" hidden>
+      <div id="gsiBtn" style="min-height:44px;display:flex;justify-content:center"></div>
+      <p class="err" id="liveErr" role="alert" style="text-align:center"></p>
+      <p class="fine" style="margin-top:12px"><b>Students and LC members:</b> use your school Google account, <span class="mono">@permatapintar.ukm.edu.my</span> or DELIMa <span class="mono">@moe-dl.edu.my</span>. <b>Teachers:</b> the email a Master added for you. <b>Visitors:</b> any Google account, to save books for later.</p>
+    </div>
     <div id="pStu">
       <button class="gbtn" id="stuLogin"><svg aria-hidden="true"><use href="#glogo"/></svg>Continue with DELIMa</button>
       <p class="fine" style="margin-top:12px">Use your @moe-dl.edu.my account. You'll only see your own loans. The first time, we ask for your name and class.</p>
@@ -840,7 +845,7 @@ dialog.signin::backdrop{background:rgba(20,20,20,.45)}
 <script>
 (function(){
 /* LIVE = true on the hosted site: covers and subjects come from Open Library, status and sign-in from the Apps Script API. */
-const F={"covers": true, "public": true, "map": false};const LIVE=F.covers,PUBLIC=F.public,NOMAP=F.map===false;
+const F={"covers": true, "public": true, "map": false, "api": "https://script.google.com/macros/s/AKfycbyNByyrl3vb0RxZO6e7iHe-4-KUxNs2VpVo-PGYET4eDK8aL688CfTXDKVkp53mld0eZQ/exec", "cid": "291330401384-0cf9vdq2c48nse72cs4hrl8ch9jmi1cd.apps.googleusercontent.com"};const LIVE=F.covers,PUBLIC=F.public,NOMAP=F.map===false,LIVEAPI=F.api||"";
 
 const RAW=JSON.parse(document.getElementById('books').textContent);
 const SD=JSON.parse(document.getElementById('staffdata').textContent);
@@ -934,14 +939,14 @@ function setSession(s){mem.session=s;store('session',s)}
 function meIdx(){const s=session();return s&&s.type==='member'?MEM.findIndex(m=>m.h===s.h):-1}
 function role(){const s=session();if(!s)return 'guest';if(s.type==='student')return 'student';if(s.type==='advisor')return ADV().some(a=>a.e===s.e)?'advisor':'guest';const i=meIdx();return i<0||MEM[i].r==='removed'?'guest':MEM[i].r==='master'?'master':'staff'}
 const canDash=r=>r==='master'||r==='advisor';
-const isCounterPC=()=>!!store('counterpc');
+let isCounterPC=()=>!!store('counterpc');
 function navItems(){return [['catalogue','Catalogue'],['papers','Past papers'],['ebooks','Free e-books'],['about','About us']]}
-function menuItems(){const r=role(),it=[];if(r==='student')it.push(['my-loans','My loans']);if(r==='staff'||r==='master')it.push(['staff','Counter']);if(canDash(r))it.push(['dashboard','Dashboard']);return it}
+function menuItems(){const r=role(),it=[];if(r==='student')it.push(['my-loans','My loans']);if(r==='visitor')it.push(['my-loans','Saved books']);if(r==='staff'||r==='master')it.push(['staff','Counter']);if(canDash(r))it.push(['dashboard','Dashboard']);return it}
 function renderNav(){const v=current(),html=navItems().map(([k,l])=>`<a href="#${k}" ${k===v?'aria-current="page"':''}>${l}</a>`).join('');document.getElementById('nav').innerHTML=html;document.getElementById('mnav').innerHTML=html}
 function renderAuth(){
   const el=document.getElementById('auth'),r=role();
   if(r==='guest'){el.innerHTML=`<button class="btn" id="signBtn">Sign in</button>`;el.querySelector('#signBtn').onclick=()=>openSignin('student');return}
-  const i=meIdx(),adv=r==='advisor'?ADV().find(a=>a.e===session().e):null,stu=r==='student'?session():null,name=stu?tcase(stu.n||'Student'):adv?adv.n:MEM[i].n,sub=stu?'Student'+(stu.c?', '+stu.c:''):adv?'Teacher advisor':r==='master'?'Masters'+(MEM[i].t?', '+MEM[i].t:''):'Biro '+MEM[i].b;
+  const i=meIdx(),adv=r==='advisor'?ADV().find(a=>a.e===session().e):null,stu=r==='student'?session():null,M0=MEM[i]||{n:(session()||{}).n||'Member',b:'',t:''},name=stu?tcase(stu.n||'Student'):adv?adv.n:r==='visitor'?'Visitor':M0.n,sub=stu?'Student'+(stu.c?', '+stu.c:''):adv||r==='advisor'?'Teacher advisor':r==='visitor'?'Visitor':r==='master'?'Masters'+(M0.t?', '+M0.t:''):'Biro '+M0.b;
   el.innerHTML=`<button class="userbtn" id="ubtn" aria-haspopup="true" aria-expanded="false"><span class="av">${initials(name)}</span><span class="nm">${esc(short(name))}</span></button>
    <div class="menu" id="umenu" hidden><div class="who"><b>${esc(name)}</b><span class="fine">${esc(sub)}</span></div>${menuItems().map(([k,l])=>`<a href="#${k}">${l}</a>`).join('')}<button class="out" id="outBtn">Sign out</button></div>`;
   const b=el.querySelector('#ubtn'),m=el.querySelector('#umenu');
@@ -951,7 +956,7 @@ function renderAuth(){
 }
 document.addEventListener('click',e=>{const m=document.getElementById('umenu');if(m&&!m.hidden&&!e.target.closest('#auth'))m.hidden=true});
 const dlg=document.getElementById('dlg');
-function seg(t){document.getElementById('pStuP').hidden=true;[['segStu','pStu','student'],['segStf','pStf','staff'],['segTch','pTch','teacher']].forEach(([b,p,k])=>{document.getElementById(b).setAttribute('aria-selected',t===k);document.getElementById(p).hidden=t!==k});document.getElementById('stfErr').textContent='';document.getElementById('tchErr').textContent=''}
+function seg(t){document.getElementById('pStuP').hidden=true;document.getElementById('pLive').hidden=true;[['segStu','pStu','student'],['segStf','pStf','staff'],['segTch','pTch','teacher']].forEach(([b,p,k])=>{document.getElementById(b).setAttribute('aria-selected',t===k);document.getElementById(p).hidden=t!==k});document.getElementById('stfErr').textContent='';document.getElementById('tchErr').textContent=''}
 function openSignin(t){seg(t);try{dlg.showModal()}catch(e){dlg.setAttribute('open','')}if(t!=='student')setTimeout(()=>document.getElementById('stfId').focus(),30)}
 function go(hash){if(location.hash===hash)refresh();else location.hash=hash}
 document.getElementById('segStu').onclick=()=>seg('student');
@@ -969,7 +974,7 @@ document.querySelectorAll('[data-signin]').forEach(b=>b.onclick=()=>openSignin(b
 document.getElementById('stuLogin').onclick=()=>{if(PUBLIC){toast('Student sign-in opens when the counter system goes live.');return}
   const p=store('stuProfile');if(p&&p.h){setSession(p);dlg.close();toast('Signed in');go('#my-loans');return}
   document.getElementById('pStu').hidden=true;document.getElementById('pStuP').hidden=false;document.getElementById('spName').focus()};
-document.getElementById('pStuP').addEventListener('submit',async e=>{e.preventDefault();
+document.getElementById('pStuP').addEventListener('submit',async e=>{e.preventDefault();if(LIVEAPI)return liveSaveProfile();
   const n=document.getElementById('spName').value.trim().replace(/\s+/g,' '),c=document.getElementById('spClass').value,err=document.getElementById('spErr');
   let m=document.getElementById('spMat').value.trim().toUpperCase().replace(/\s+/g,'');
   if(n.split(' ').length<2){err.textContent='Type your full name, as in your school records.';return}
@@ -1575,7 +1580,7 @@ function refresh(){
   aboutMotion(v==='about');
   document.getElementById('mapEdBtn').hidden=PUBLIC||r!=='master';if(mapEdit&&r!=='master')setMapEdit(false);renderLayStatus();
   if(v==='map')renderMap();else if(T3)T3.stop();if(v==='papers')renderPapers();
-  if(v==='my-loans'){const ok=r==='student';document.getElementById('stuLock').hidden=ok;document.getElementById('stuIn').hidden=!ok;if(ok)renderLoans()}
+  if(v==='my-loans'){const ok=r==='student'||r==='visitor';document.getElementById('stuLock').hidden=ok;document.getElementById('stuIn').hidden=!ok;if(ok)renderLoans()}
   if(v==='staff'){const ok=r==='staff'||r==='master';document.getElementById('stfLock').hidden=ok;document.getElementById('stfIn').hidden=!ok;if(ok)renderStaff()}
   if(v==='dashboard'){const ok=canDash(r);document.getElementById('dashLock').hidden=ok;document.getElementById('dashBody').hidden=!ok;if(ok){renderDashLoans();renderPC();renderRoster();renderBot();renderResv();renderLabels();renderAccess()}
     document.getElementById('lockMsg').textContent=r==='staff'?'You’re signed in as an LC member. This page is for the 4 Masters only.':'For the Presiden, Naib Presiden, Setiausaha and Bendahari. Sign in with a Masters student ID.';
@@ -1587,6 +1592,107 @@ if(NOMAP){const mm=document.getElementById('miniMap');if(mm)mm.remove()}
 if(PUBLIC){
   document.getElementById('catNote').innerHTML='<b>New site.</b> Live shelf status starts when the counter system is connected. Book covers come from Open Library.';
   [document.getElementById('fStat').parentElement,document.getElementById('mStat'),document.querySelector('#sort option[value=avail]'),document.getElementById('cIn').parentElement].forEach(e=>e&&e.remove());
+}
+
+/* ================= live site: Google sign-in + Apps Script backend ================= */
+if(LIVEAPI){
+  const LV={me:null,loans:null,admin:null,roster:null};
+  const tok=()=>{try{return sessionStorage.getItem('lc_tok')||''}catch(e){return ''}};
+  const api=async q=>{const r=await fetch(LIVEAPI+'?'+new URLSearchParams({...q,token:tok()}),{credentials:'omit'});return r.json()};
+  const post=async b=>{const r=await fetch(LIVEAPI,{method:'POST',credentials:'omit',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...b,token:tok()})});return r.json()};
+  const expired=d=>d&&d.error&&/Sign in with Google/.test(d.error);
+  // session lives in this tab only (sessionStorage): the Google token lasts about an hour
+  session=function(){try{const s=JSON.parse(sessionStorage.getItem('lc_live')||'null');return s&&s.type?s:null}catch(e){return mem.session||null}};
+  setSession=function(s){mem.session=s;try{if(s)sessionStorage.setItem('lc_live',JSON.stringify(s));else{sessionStorage.removeItem('lc_live');sessionStorage.removeItem('lc_tok')}}catch(e){}};
+  role=function(){const s=session();if(!s)return 'guest';return ['student','staff','master','advisor','visitor'].includes(s.role)?s.role:'guest'};
+  meIdx=function(){const s=session();if(!s||(s.role!=='staff'&&s.role!=='master'))return -1;if(s.mi>=0&&MEM[s.mi])return s.mi;
+    let i=memIndex(s.n);if(i<0){MEM.push({n:s.n||s.e,b:'',r:s.role,t:'',c:''});i=MEM.length-1}return i};
+  shiftNow=function(){return {ok:true,html:'Clock-in opens 15 minutes before your shift. The server checks the Shifts tab.'}};
+  roster=function(){return LV.roster||[]};
+  isCounterPC=function(){return !!store('devkey')};
+  const memIndex=n=>{n=String(n||'').toUpperCase();return MEM.findIndex(m=>m.n.toUpperCase()===n||(m.p||'').toUpperCase()===n)};
+  async function signedIn(cred){
+    try{sessionStorage.setItem('lc_tok',cred)}catch(e){}
+    const el=document.getElementById('liveErr');el.textContent='Checking…';
+    let d;try{d=await api({api:'me'})}catch(x){el.textContent='Couldn’t reach the library server. Try again in a minute.';return}
+    if(d.error){el.textContent=d.error;return}
+    const me=d.me,mi=me.role==='staff'||me.role==='master'?memIndex(me.name):-1;
+    setSession({type:'live',role:me.role,n:me.name||'',e:me.email,c:d.profile?d.profile.cls:'',mi,adv:me.role==='advisor'?me.name:''});
+    LV.me=me;LV.loans=d.loans;el.textContent='';
+    if(me.role==='student'&&!d.profile){document.getElementById('pLive').hidden=true;document.getElementById('pStuP').hidden=false;
+      document.getElementById('spMat').closest('.field').hidden=true;document.getElementById('spName').focus();return}
+    dlg.close();toast('Signed in'+(me.name?' as '+tcase(me.name).split(' ')[0]:''));
+    go(me.role==='master'||me.role==='advisor'?'#dashboard':me.role==='staff'?'#staff':me.role==='student'?'#my-loans':location.hash||'#catalogue');
+  }
+  window.liveSaveProfile=async function(){
+    const n=document.getElementById('spName').value.trim().replace(/\s+/g,' '),c=document.getElementById('spClass').value,err=document.getElementById('spErr');
+    if(n.split(' ').length<2){err.textContent='Type your full name, as in your school records.';return}
+    if(!c){err.textContent='Choose your class.';return}
+    err.textContent='Saving…';const d=await post({action:'saveProfile',name:n,cls:c});
+    if(d.error){err.textContent=d.error;return}
+    const s=session();s.n=d.name;s.c=d.cls;setSession(s);err.textContent='';dlg.close();toast('Welcome, '+tcase(n.split(' ')[0]));go('#my-loans')};
+  openSignin=function(){seg('student');document.getElementById('pStu').hidden=true;document.querySelector('#dlg .segs').hidden=true;document.getElementById('pLive').hidden=false;
+    document.getElementById('dlgT').textContent='Sign in';try{dlg.showModal()}catch(e){dlg.setAttribute('open','')}
+    if(window.google&&google.accounts)google.accounts.id.renderButton(document.getElementById('gsiBtn'),{theme:'outline',size:'large',text:'continue_with',shape:'rectangular',width:300})};
+  document.getElementById('stuEdit').onclick=()=>{const s=session()||{};seg('student');document.getElementById('pStu').hidden=true;document.querySelector('#dlg .segs').hidden=true;
+    document.getElementById('pStuP').hidden=false;document.getElementById('spMat').closest('.field').hidden=true;document.getElementById('spName').value=s.n?tcase(s.n):'';document.getElementById('spClass').value=s.c||'';try{dlg.showModal()}catch(e){}};
+  const g=document.createElement('script');g.src='https://accounts.google.com/gsi/client';g.async=true;
+  g.onload=()=>google.accounts.id.initialize({client_id:F.cid,callback:r=>signedIn(r.credential),ux_mode:'popup',auto_select:false,cancel_on_tap_outside:true});
+  document.head.appendChild(g);
+  const outWrap=renderAuth;renderAuth=function(){outWrap();const s=session(),b=document.getElementById('outBtn');
+    if(s&&s.role==='visitor'){const w=document.querySelector('#umenu .who');if(w)w.innerHTML=`<b>${esc(s.e)}</b><span class="fine">Visitor</span>`;const u=document.querySelector('#ubtn .nm');if(u)u.textContent='Visitor';const a=document.querySelector('#ubtn .av');if(a)a.textContent=(s.e||'V')[0].toUpperCase()}
+    if(s&&s.role==='advisor'){const w=document.querySelector('#umenu .who');if(w)w.innerHTML=`<b>${esc(s.adv||s.e)}</b><span class="fine">Teacher</span>`}
+    if(b)b.onclick=()=>{try{google.accounts.id.disableAutoSelect()}catch(e){}LV.admin=null;setSession(null);toast('Signed out');go('#catalogue')}};
+
+  // My loans from the borrowing forms (only this student's rows come back)
+  myLoans=function(){const s=session();if(!s||s.role!=='student'||!LV.loans)return[];const L=LV.loans,all=[...L.borrowed,...L.returned];
+    return all.map(x=>{const hit=x.serial&&bySerial[String(x.serial).toUpperCase()],b=hit?hit[0]:{i:-1,t:tcase(x.title),a:'',c:'',call:'',copies:[],tags:[]};
+      const o=new Date(x.borrowed),due=new Date(x.due),st=x.state==='returned'?'ret':x.state,left=Math.round((due-TODAY)/DAY);
+      return {b,o,due,r:x.returned?new Date(x.returned):null,st,late:x.late||0,owed:x.owed||0,fine:x.fine||0,rn:x.renewed,copy:hit?{s:x.serial}:null,left,cat:st!=='out'?st:left<0?'late':left<=3?'soon':'on'}})};
+  const loansWrap=renderLoans;renderLoans=function(){const s=session();
+    if(s&&s.role==='visitor'){ltab='saved';loansWrap();document.getElementById('ltabs').innerHTML=`<button role="tab" aria-selected="true" data-k="saved">Saved<span class="c">${saved.size}</span></button>`;
+      document.getElementById('stuName').textContent='Saved books';document.getElementById('stuMeta').textContent=s.e+', visitor';document.getElementById('stuEdit').hidden=true;return}
+    document.getElementById('stuEdit').hidden=false;
+    if(s&&s.role==='student'&&!LV.loans){document.getElementById('loanList').innerHTML='<p class="empty">Loading your loans…</p>';
+      api({api:'me'}).then(d=>{if(expired(d)){setSession(null);openSignin();return}LV.loans=d.loans||{borrowed:[],returned:[]};loansWrap()});return}
+    loansWrap()};
+
+  // Counter: clock-in goes to the LC clock-in sheet through the backend
+  let liveOn=false;
+  const staffWrap=renderStaff;renderStaff=function(){staffWrap();
+    document.getElementById('sessRows').innerHTML='<tr><td colspan="4" class="fine">Loading…</td></tr>';
+    api({api:'staff'}).then(d=>{if(expired(d)){setSession(null);openSignin();return}if(d.error){toast(d.error);return}
+      liveOn=!!d.onDuty;clk=liveOn?(clk||Date.now()):null;
+      const h=(d.history||[]).slice().reverse();
+      document.getElementById('sessRows').innerHTML=h.length?h.slice(0,12).map(x=>`<tr><td>${esc(String(x['DATE']||x['Timestamp']||'').slice(0,15))}</td><td class="mono">${esc(String(x['TIME IN:']||''))}</td><td class="mono">${esc(String(x['TIME OUT:']||''))}</td><td class="num"></td></tr>`).join(''):'<tr><td colspan="4" class="fine">No clock-ins yet.</td></tr>';
+      renderClock()})};
+  document.getElementById('clkBtn').addEventListener('click',async e=>{e.stopImmediatePropagation();if(!isCounterPC())return;
+    const b=e.currentTarget;b.disabled=true;const d=await post({action:liveOn?'clockOut':'clockIn',deviceKey:store('devkey')});b.disabled=false;
+    if(d.error){toast(d.error);return}liveOn=!liveOn;clk=liveOn?Date.now():null;toast(liveOn?'Clocked in':'Clocked out');renderClock()},true);
+  document.getElementById('pcBtn').onclick=async()=>{if(isCounterPC()){store('devkey',null);toast('Counter PC removed from this browser');renderPC();return}
+    const d=await post({action:'registerCounterPC'});if(d.error){toast(d.error);return}store('devkey',d.deviceKey);toast('This browser is now the counter PC');renderPC()};
+  document.getElementById('testMode').closest('label').hidden=true;
+
+  // Dashboard from the backend
+  const dashWrap=renderDashLoans;renderDashLoans=function(){
+    const paint=()=>{const A=LV.admin;if(!A)return;
+      const conv=(x,st)=>{const hit=x.serial&&bySerial[String(x.serial).toUpperCase()];return {key:x.src+':'+x.row,s:x.src,row:x.row,n:x.name,c:x.cls,b:hit?hit[0]:{i:-1,t:tcase(x.title),call:''},copy:hit?{s:x.serial}:null,due:new Date(x.due),r:x.returnedOn?new Date(x.returnedOn):null,o:new Date(x.due),st,late:x.late,owed:x.owed,fine:0,bi:hit?0:-1}};
+      ALL.length=0;if(A.loans){A.loans.overdue.forEach(x=>ALL.push(conv(x,'out')));A.loans.unpaid.forEach(x=>ALL.push(conv(x,'ret')))}
+      dashWrap();document.getElementById('kL').textContent=fmt(A.onLoan||0);
+      const P=A.loans?A.loans.problems:null;
+      document.getElementById('loanHealth').innerHTML=P?hl([[P.old,'warn','old loans never ticked returned','Last school year. They don’t count as out.'],[P.unmatched,'warn','loans whose title isn’t in the catalogue','Typed differently from the book list.'],[P.sharedMatric,'bad','matric numbers used by two names','Probably typos.'],[P.noMatric,'warn','loans with no matric number','These students can’t see them in My loans.'],[P.noReturnDate,'','returns with no return date','Late days can’t be worked out.']])
+        :hl([['!','bad','borrowing sheets not shared yet','Share the three form response sheets with librarypermata.students@gmail.com, then reload.']]);
+      if(A.loans&&A.loans.forms)document.getElementById('formHealth').innerHTML=A.loans.forms.map(f=>`<li><span class="num">${fmt(f.loans)}</span><div><b>${esc(f.label)} <a href="${f.form}" target="_blank" rel="noopener" class="fine">open form</a></b><span>${f.out} out now.</span></div></li>`).join('');
+      const hrs=A.shiftsByMember||{};document.getElementById('hrsRows').innerHTML=(A.members||[]).map(m=>{const n=hrs[String(m.name).toUpperCase()]||0;return `<tr><td>${esc(short(m.name))}${m.role==='master'?' <span class="tagmini">M</span>':''}</td><td class="fine">${esc(m.biro||'')}</td><td class="num">${n}</td><td class="num">${m.linked?'Telegram ✓':'not linked'}</td><td class="num fine"></td></tr>`}).join('');
+      LV.roster=(A.shifts||[]).map(x=>({d:String(x.day).toUpperCase(),s:x.start,e:x.end,m:Math.max(0,(A.members||[]).findIndex(m=>m.id===x.id)>=0?memIndex((A.members.find(m=>m.id===x.id)||{}).name):-1)}));renderRoster();renderBot();
+      document.querySelectorAll('#rostRows select,#rostRows input,#rostRows button').forEach(x=>x.disabled=true)};
+    if(LV.admin){paint();return}
+    document.getElementById('odRows').innerHTML='<tr><td colspan="5" class="fine">Loading from the borrowing forms…</td></tr>';
+    api({api:'admin'}).then(d=>{if(expired(d)){setSession(null);openSignin();return}if(d.error){toast(d.error);return}LV.admin=d;paint()})};
+  const mrWrap=markReturned;markReturned=function(L){post({action:'markReturned',src:L.s,row:L.row}).then(d=>{if(d.error)toast(d.error)});mrWrap(L)};
+  renderAccess=function(){document.getElementById('accessSec').innerHTML='<div class="section"><h2>Access</h2><p class="fine" style="margin:0">Roles live in the <b>Members</b> tab of the PERMATA Library System spreadsheet (librarypermata.students account). Set Role to master, staff, advisor (teachers, with their Email) or removed. Changes work at the next sign-in.</p></div>'};
+  document.querySelector('.importbox').hidden=true;['rostAdd','rostReset'].forEach(id=>document.getElementById(id).hidden=true);
+  document.getElementById('rostInfo').textContent='From the Shifts tab of the PERMATA Library System spreadsheet. Edit it there. The Telegram bot reminds members 30 minutes before each shift.';
 }
 document.querySelectorAll('.fineTbl').forEach(t=>t.innerHTML=fineTable());
 function drawMini(){const g=document.getElementById('miniSvg');if(!g)return;
