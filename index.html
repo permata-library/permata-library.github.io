@@ -1588,7 +1588,7 @@ function refresh(){
 }
 window.addEventListener('hashchange',()=>{window.scrollTo(0,0);refresh();const bk=bookFromHash();if(bk)openBook(bk.i)});
 {const bk=bookFromHash();if(bk)setTimeout(()=>openBook(bk.i),50)}
-if(NOMAP){const mm=document.getElementById('miniMap');if(mm)mm.remove()}
+if(NOMAP){const mm=document.getElementById('miniMap');if(mm)mm.remove();document.querySelectorAll('#dlg .fine').forEach(x=>{x.innerHTML=x.innerHTML.replace('The catalogue, map, past papers','The catalogue, past papers')})}
 if(PUBLIC){
   document.getElementById('catNote').innerHTML='<b>New site.</b> Live shelf status starts when the counter system is connected. Book covers come from Open Library.';
   [document.getElementById('fStat').parentElement,document.getElementById('mStat'),document.querySelector('#sort option[value=avail]'),document.getElementById('cIn').parentElement].forEach(e=>e&&e.remove());
