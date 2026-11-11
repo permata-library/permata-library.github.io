@@ -1695,14 +1695,39 @@ if(LIVEAPI){
       if(A.loans&&A.loans.forms)document.getElementById('formHealth').innerHTML=A.loans.forms.map(f=>`<li><span class="num">${fmt(f.loans)}</span><div><b>${esc(f.label)} <a href="${f.form}" target="_blank" rel="noopener" class="fine">open form</a></b><span>${f.out} out now.</span></div></li>`).join('');
       const hrs=A.shiftsByMember||{};document.getElementById('hrsRows').innerHTML=(A.members||[]).map(m=>{const n=hrs[String(m.name).toUpperCase()]||0;return `<tr><td>${esc(short(m.name))}${m.role==='master'?' <span class="tagmini">M</span>':''}</td><td class="fine">${esc(m.biro||'')}</td><td class="num">${n}</td><td class="num">${m.linked?'Telegram ✓':'not linked'}</td><td class="num fine"></td></tr>`}).join('');
       LV.roster=(A.shifts||[]).map(x=>({d:String(x.day).toUpperCase(),s:x.start,e:x.end,m:Math.max(0,(A.members||[]).findIndex(m=>m.id===x.id)>=0?memIndex((A.members.find(m=>m.id===x.id)||{}).name):-1)}));renderRoster();renderBot();
-      document.querySelectorAll('#rostRows select,#rostRows input,#rostRows button').forEach(x=>x.disabled=true)};
+      document.querySelectorAll('#rostRows select,#rostRows input,#rostRows button').forEach(x=>x.disabled=true);
+      document.querySelector('.importbox').hidden=role()!=='master';document.getElementById('rostInfo').textContent=(A.rosterWeek?'Current roster: '+A.rosterWeek+'. ':'')+'From the Shifts tab of the PERMATA Library System spreadsheet. Masters can upload the weekly poster above, or edit the tab directly. Members can only clock in during their own shift.';
+      if(!A.aiReady)aiMsg.innerHTML='AI reading needs an <b>ANTHROPIC_API_KEY</b> in the Apps Script project’s Script properties first.'};
     if(LV.admin){paint();return}
     document.getElementById('odRows').innerHTML='<tr><td colspan="5" class="fine">Loading from the borrowing forms…</td></tr>';
     api({api:'admin'}).then(d=>{if(expired(d)){setSession(null);openSignin();return}if(d.error){toast(d.error);return}LV.admin=d;paint()})};
   const mrWrap=markReturned;markReturned=function(L){post({action:'markReturned',src:L.s,row:L.row}).then(d=>{if(d.error)toast(d.error)});mrWrap(L)};
   renderAccess=function(){document.getElementById('accessSec').innerHTML='<div class="section"><h2>Access</h2><p class="fine" style="margin:0">Roles live in the <b>Members</b> tab of the PERMATA Library System spreadsheet (librarypermata.students account). Set Role to master, staff, advisor (teachers, with their Email) or removed. Changes work at the next sign-in.</p></div>'};
-  document.querySelector('.importbox').hidden=true;['rostAdd','rostReset'].forEach(id=>document.getElementById(id).hidden=true);
-  document.getElementById('rostInfo').textContent='From the Shifts tab of the PERMATA Library System spreadsheet. Edit it there. The Telegram bot reminds members 30 minutes before each shift.';
+  ['rostAdd','rostReset'].forEach(id=>document.getElementById(id).hidden=true);
+  // Masters upload the roster poster: the backend sends it to Claude, a Master checks the names, then it's saved to the Shifts tab.
+  const shrink=f=>new Promise((ok,no)=>{const img=new Image();img.onload=()=>{const k=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');
+    c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext('2d').drawImage(img,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.85).split(',')[1])};img.onerror=no;img.src=URL.createObjectURL(f)});
+  aiBtn.onclick=async()=>{const f=aiFile.files[0];if(!f)return;
+    if(role()!=='master'){aiMsg.textContent='Only Masters can import a roster.';return}
+    aiBtn.disabled=true;aiMsg.textContent='Reading the roster… this takes about 15 seconds.';
+    let d;try{d=await post({action:'rosterFromImage',image:await shrink(f),mediaType:'image/jpeg'})}catch(x){d={error:'Couldn’t reach the library server. Try again.'}}
+    aiBtn.disabled=false;
+    if(d.error){aiMsg.innerHTML=/ANTHROPIC_API_KEY/.test(d.error)?'AI reading isn’t switched on yet. Add an <b>ANTHROPIC_API_KEY</b> in the Apps Script project’s Script properties.':esc(d.error);return}
+    const mem=(LV.admin&&LV.admin.members)||[];
+    const rows=[];(d.shifts||[]).forEach(x=>(x.matched||(x.names||[]).map(n=>({name:n,studentId:''}))).forEach(n=>rows.push({d:String(x.day).slice(0,3).toUpperCase(),s:x.start,e:x.end,name:n.name,id:n.studentId||''})));
+    aiShifts={title:d.title||'',rows};const bad=rows.filter(x=>!x.id).length;
+    aiMsg.innerHTML=`Found <b>${rows.length}</b> people across ${(d.shifts||[]).length} shifts${d.title?' in <b>'+esc(d.title)+'</b>':''}.${bad?` <span class="unk">${bad} name(s) not matched.</span> Pick the right member before saving.`:' Check it, then save.'}`;
+    aiOut.innerHTML=`<div class="tablewrap"><table class="t1"><thead><tr><th>Day</th><th>Time</th><th>On the picture</th><th>Member</th></tr></thead><tbody>${rows.map((x,k)=>`<tr><td>${esc(x.d)}</td><td class="mono">${esc(x.s)} to ${esc(x.e)}</td><td>${esc(x.name)}</td><td><select data-k="${k}" class="sort">${x.id?'':'<option value="" selected>Choose…</option>'}${mem.filter(m=>m.role!=='removed'&&m.role!=='advisor').map(m=>`<option value="${esc(m.id)}" ${m.id===x.id?'selected':''}>${esc(m.nick||short(m.name))}</option>`).join('')}<option value="-">Leave out</option></select></td></tr>`).join('')}</tbody></table></div>
+      <div style="display:flex;gap:10px;margin-top:10px"><button class="btn sm" id="aiSave">Save to the Shifts tab</button><button class="btn ghost sm" id="aiCancel">Discard</button></div>`;
+    aiOut.querySelectorAll('select').forEach(sl=>sl.onchange=()=>{aiShifts.rows[+sl.dataset.k].id=sl.value});
+    document.getElementById('aiCancel').onclick=()=>{aiOut.innerHTML='';aiShifts=null;aiMsg.textContent='Discarded.'};
+    document.getElementById('aiSave').onclick=async()=>{
+      if(aiShifts.rows.some(x=>!x.id)){aiMsg.innerHTML='<span class="unk">Choose a member (or Leave out) for every unmatched name first.</span>';return}
+      aiMsg.textContent='Saving…';const r=await post({action:'saveRoster',week:aiShifts.title,shifts:aiShifts.rows.filter(x=>x.id!=='-').map(x=>({day:x.d,start:x.s,end:x.e,studentId:x.id}))});
+      if(r.error){aiMsg.textContent=r.error;return}
+      aiOut.innerHTML='';aiShifts=null;aiMsg.textContent=`Saved ${r.count} shifts to the Shifts tab. Clock-in times and Telegram reminders now follow this roster.`;toast('Roster saved');
+      LV.admin=null;renderDashLoans()}};
+  document.getElementById('rostInfo').textContent='From the Shifts tab of the PERMATA Library System spreadsheet. Upload the weekly poster above, or edit the tab directly. The Telegram bot reminds members 30 minutes before each shift.';
 }
 document.querySelectorAll('.fineTbl').forEach(t=>t.innerHTML=fineTable());
 function drawMini(){const g=document.getElementById('miniSvg');if(!g)return;
