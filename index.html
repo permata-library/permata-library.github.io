@@ -1697,7 +1697,7 @@ if(LIVEAPI){
       LV.roster=(A.shifts||[]).map(x=>({d:String(x.day).toUpperCase(),s:x.start,e:x.end,m:Math.max(0,(A.members||[]).findIndex(m=>m.id===x.id)>=0?memIndex((A.members.find(m=>m.id===x.id)||{}).name):-1)}));renderRoster();renderBot();
       document.querySelectorAll('#rostRows select,#rostRows input,#rostRows button').forEach(x=>x.disabled=true);
       document.querySelector('.importbox').hidden=role()!=='master';document.getElementById('rostInfo').textContent=(A.rosterWeek?'Current roster: '+A.rosterWeek+'. ':'')+'From the Shifts tab of the PERMATA Library System spreadsheet. Masters can upload the weekly poster above, or edit the tab directly. Members can only clock in during their own shift.';
-      if(!A.aiReady)aiMsg.innerHTML='AI reading needs an <b>ANTHROPIC_API_KEY</b> in the Apps Script project’s Script properties first.'};
+      if(!A.aiReady)aiMsg.innerHTML='AI reading needs a free <b>GEMINI_API_KEY</b> (from aistudio.google.com) in the Apps Script project’s Script properties first.'};
     if(LV.admin){paint();return}
     document.getElementById('odRows').innerHTML='<tr><td colspan="5" class="fine">Loading from the borrowing forms…</td></tr>';
     api({api:'admin'}).then(d=>{if(expired(d)){setSession(null);openSignin();return}if(d.error){toast(d.error);return}LV.admin=d;paint()})};
@@ -1712,7 +1712,7 @@ if(LIVEAPI){
     aiBtn.disabled=true;aiMsg.textContent='Reading the roster… this takes about 15 seconds.';
     let d;try{d=await post({action:'rosterFromImage',image:await shrink(f),mediaType:'image/jpeg'})}catch(x){d={error:'Couldn’t reach the library server. Try again.'}}
     aiBtn.disabled=false;
-    if(d.error){aiMsg.innerHTML=/ANTHROPIC_API_KEY/.test(d.error)?'AI reading isn’t switched on yet. Add an <b>ANTHROPIC_API_KEY</b> in the Apps Script project’s Script properties.':esc(d.error);return}
+    if(d.error){aiMsg.innerHTML=/API_KEY/.test(d.error)?'AI reading isn’t switched on yet. Add a free <b>GEMINI_API_KEY</b> in the Apps Script project’s Script properties.':esc(d.error);return}
     const mem=(LV.admin&&LV.admin.members)||[];
     const rows=[];(d.shifts||[]).forEach(x=>(x.matched||(x.names||[]).map(n=>({name:n,studentId:''}))).forEach(n=>rows.push({d:String(x.day).slice(0,3).toUpperCase(),s:x.start,e:x.end,name:n.name,id:n.studentId||''})));
     aiShifts={title:d.title||'',rows};const bad=rows.filter(x=>!x.id).length;
