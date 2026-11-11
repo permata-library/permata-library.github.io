@@ -654,7 +654,7 @@ dialog.signin::backdrop{background:rgba(20,20,20,.45)}
           <div>
             <h3 style="margin-bottom:8px">Your duty history <span class="src real">REAL</span></h3>
             <div class="tablewrap"><table class="t1"><thead><tr><th>Date</th><th>In</th><th>Out</th><th class="num">Time</th></tr></thead><tbody id="sessRows"></tbody></table></div>
-            <p class="fine" style="margin-top:8px">From the LC clock-in form, Aug to Oct 2026. Times typed as AM are read as PM.</p>
+            <p class="fine" style="margin-top:8px" id="histNote">From the LC clock-in form, Aug to Oct 2026. Times typed as AM are read as PM.</p>
           </div>
         </div>
         <div class="section">
@@ -1118,7 +1118,7 @@ document.getElementById('clkBtn').addEventListener('click',()=>{if(!isCounterPC(
 function renderStaff(){
   const i=meIdx(),m=MEM[i];
   document.getElementById('stfName').textContent=m.n;document.getElementById('stfAv').textContent=initials(m.n);
-  document.getElementById('stfMeta').textContent=(m.r==='master'?'Masters, '+m.t:'Biro '+m.b+(m.t?', '+m.t:''))+', '+m.c;
+  document.getElementById('stfMeta').textContent=[m.r==='master'?'Masters'+(m.t?', '+m.t:''):'Biro '+m.b+(m.t?', '+m.t:''),m.c].filter(Boolean).join(', ');
   const s=mySess();
   document.getElementById('sessRows').innerHTML=s.length?s.slice(0,12).map(x=>`<tr><td>${dshort(x.dt)}</td><td class="mono">${x.i}</td><td class="mono">${x.o}</td><td class="num">${hm(x.min)}</td></tr>`).join(''):'<tr><td colspan="4" class="fine">No clock-ins yet this term.</td></tr>';
   document.getElementById('roster').innerHTML=SD.sessions.slice().sort((a,b)=>b.dt-a.dt||b.i.localeCompare(a.i)).slice(0,8).map(x=>`<li><span class="when">${dshort(x.dt)}</span><span>${esc(short(MEM[x.m].n))} <span class="fine">${x.i} to ${x.o}</span></span>${x.m===i?'<span class="you">YOU</span>':'<span></span>'}</li>`).join('');
@@ -1609,7 +1609,8 @@ if(LIVEAPI){
     let i=memIndex(s.n);if(i<0){MEM.push({n:s.n||s.e,b:'',r:s.role,t:'',c:''});i=MEM.length-1}return i};
   shiftNow=function(){return {ok:true,html:'Clock-in opens 15 minutes before your shift. The server checks the Shifts tab.'}};
   roster=function(){return LV.roster||[]};
-  isCounterPC=function(){return !!store('devkey')};
+  // Clock-in from each member's own account. If Settings REQUIRE_COUNTER_PC is TRUE, only the registered PC can.
+  isCounterPC=function(){return LV.needPC?!!store('devkey'):true};
   const memIndex=n=>{n=String(n||'').toUpperCase();return MEM.findIndex(m=>m.n.toUpperCase()===n||(m.p||'').toUpperCase()===n)};
   async function signedIn(cred){
     try{sessionStorage.setItem('lc_tok',cred)}catch(e){}
@@ -1659,19 +1660,28 @@ if(LIVEAPI){
 
   // Counter: clock-in goes to the LC clock-in sheet through the backend
   let liveOn=false;
-  const staffWrap=renderStaff;renderStaff=function(){staffWrap();
+  const clockWrap=renderClock;renderClock=function(){clockWrap();document.getElementById('clkWeek').textContent=''};
+  const staffWrap=renderStaff;renderStaff=function(){staffWrap();document.getElementById('histNote').textContent='Your last 12 clock-ins from the LC clock-in sheet.';
     document.getElementById('sessRows').innerHTML='<tr><td colspan="4" class="fine">Loading…</td></tr>';
     api({api:'staff'}).then(d=>{if(expired(d)){setSession(null);openSignin();return}if(d.error){toast(d.error);return}
-      liveOn=!!d.onDuty;clk=liveOn?(clk||Date.now()):null;
+      LV.needPC=!!d.needPC;const pb=document.getElementById('pcBadge');if(pb&&!LV.needPC)pb.textContent='Clocks in on your own account';
+      liveOn=!!d.onDuty;
+      // start the timer from the real clock-in time in the sheet ("4:01:00 PM")
+      const open=(d.history||[]).slice().reverse().find(x=>x['TIME IN:']&&!x['TIME OUT:']),m=open&&String(open['TIME IN:']).match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)?/i);
+      if(liveOn&&m){const t=new Date();let h=+m[1]%12;if(/p/i.test(m[4]||''))h+=12;if(!m[4])h=+m[1];t.setHours(h,+m[2],+(m[3]||0),0);clk=t.getTime()}else clk=liveOn?(clk||Date.now()):null;
       const h=(d.history||[]).slice().reverse();
       document.getElementById('sessRows').innerHTML=h.length?h.slice(0,12).map(x=>`<tr><td>${esc(String(x['DATE']||x['Timestamp']||'').slice(0,15))}</td><td class="mono">${esc(String(x['TIME IN:']||''))}</td><td class="mono">${esc(String(x['TIME OUT:']||''))}</td><td class="num"></td></tr>`).join(''):'<tr><td colspan="4" class="fine">No clock-ins yet.</td></tr>';
       renderClock()})};
   document.getElementById('clkBtn').addEventListener('click',async e=>{e.stopImmediatePropagation();if(!isCounterPC())return;
     const b=e.currentTarget;b.disabled=true;const d=await post({action:liveOn?'clockOut':'clockIn',deviceKey:store('devkey')});b.disabled=false;
     if(d.error){toast(d.error);return}liveOn=!liveOn;clk=liveOn?Date.now():null;toast(liveOn?'Clocked in':'Clocked out');renderClock()},true);
-  document.getElementById('pcBtn').onclick=async()=>{if(isCounterPC()){store('devkey',null);toast('Counter PC removed from this browser');renderPC();return}
+  document.getElementById('pcBtn').onclick=async()=>{if(store('devkey')){store('devkey',null);toast('Counter PC removed from this browser');renderPC();return}
     const d=await post({action:'registerCounterPC'});if(d.error){toast(d.error);return}store('devkey',d.deviceKey);toast('This browser is now the counter PC');renderPC()};
   document.getElementById('testMode').closest('label').hidden=true;
+  renderPC=function(){const reg=!!store('devkey');
+    document.getElementById('pcText').textContent=LV.needPC?(reg?'This browser is the counter PC. Members can clock in here.':'Clock-in is limited to one registered PC. Open this page on the library counter PC and register it.')
+      :'Every LC member clocks in from their own signed-in account, during their shift. To limit it to the library PC later, set REQUIRE_COUNTER_PC to TRUE in the Settings tab and register the PC here.';
+    const b=document.getElementById('pcBtn');b.textContent=reg?'Remove this PC':'Make this the counter PC';b.className=reg?'btn ghost':'btn ghost'};
 
   // Dashboard from the backend
   const dashWrap=renderDashLoans;renderDashLoans=function(){
